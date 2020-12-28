@@ -89,6 +89,7 @@ void accept_request(int client)
  }
  url[i] = '\0';
 
+/* GET方法携带？来请求CGI执行,如 ?test.sh这种形式 */
  if (strcasecmp(method, "GET") == 0)
  {
   query_string = url;
@@ -113,11 +114,11 @@ void accept_request(int client)
  else
  {
   if ((st.st_mode & S_IFMT) == S_IFDIR)
-   strcat(path, "/index.html");
+   strcat(path, "/index.html");  // 应该是跑不到这一句了，发过来的请求都自动会带一个'/'
   if ((st.st_mode & S_IXUSR) ||
       (st.st_mode & S_IXGRP) ||
       (st.st_mode & S_IXOTH)    )
-   cgi = 1;
+   cgi = 1;						// index.html不能有执行权限
   if (!cgi)
    serve_file(client, path);
   else
@@ -221,6 +222,7 @@ void execute_cgi(int client, const char *path,
  else    /* POST */
  {
   numchars = get_line(client, buf, sizeof(buf));
+  /* parse content-length */
   while ((numchars > 0) && strcmp("\n", buf))
   {
    buf[15] = '\0';
@@ -260,17 +262,21 @@ void execute_cgi(int client, const char *path,
   dup2(cgi_input[0], 0);
   close(cgi_output[0]);
   close(cgi_input[1]);
+  // 增加环境变量REQUEST_METHOD=GET or POST
   sprintf(meth_env, "REQUEST_METHOD=%s", method);
   putenv(meth_env);
+
+  /* 目前看起来好像query_string并没有执行 */
   if (strcasecmp(method, "GET") == 0) {
    sprintf(query_env, "QUERY_STRING=%s", query_string);
    putenv(query_env);
+   execl(query_string, query_string, NULL);
   }
   else {   /* POST */
    sprintf(length_env, "CONTENT_LENGTH=%d", content_length);
    putenv(length_env);
   }
-  execl(path, path, NULL);
+  execl(path, path, NULL); // cgi脚本可以直接执行
   exit(0);
  } else {    /* parent */
   close(cgi_output[1]);
@@ -394,6 +400,7 @@ void serve_file(int client, const char *filename)
  int numchars = 1;
  char buf[1024];
 
+ /* buf仅用来清空tcp_buffer */
  buf[0] = 'A'; buf[1] = '\0';
  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
   numchars = get_line(client, buf, sizeof(buf));

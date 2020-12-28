@@ -2,6 +2,19 @@ A mirror for tinyhttpd(Tinyhttpd非官方镜像,Fork自[sourceForge](https://sou
 
 测试CGI时需要本机安装PERL，同时安装perl-cgi
 
+### perl安装
+```
+yum install -y perl-CGI
+```
+`cgi脚本中的-T参数需要去掉，确定本机的perl安装路径是否是/usr/bin/perl`
+
+### httpd安装 （optional）
+```
+yum install -y httpd
+systemctl start httpd
+systemctl enable httpd
+```
+ 
 ### Prepare 
 Compile for Linux
 ```
@@ -98,4 +111,5 @@ I help you learn something, I'd love to know!
   Happy hacking!
 
                                    J. David Blackstone
+
 
