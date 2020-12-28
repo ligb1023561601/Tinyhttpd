@@ -65,6 +65,7 @@ void accept_request(int client)
  i = 0; j = 0;
  while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
  {
+  // parse method is GET or POST
   method[i] = buf[j];
   i++; j++;
  }
@@ -76,20 +77,21 @@ void accept_request(int client)
   return;
  }
 
+ // execute cgi scripts if the method is POST 
  if (strcasecmp(method, "POST") == 0)
   cgi = 1;
 
  i = 0;
  while (ISspace(buf[j]) && (j < sizeof(buf)))
-  j++;
+  j++;		// 跳过空格
  while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
  {
   url[i] = buf[j];
   i++; j++;
  }
- url[i] = '\0';
+ url[i] = '\0';  // 取得url
 
-/* GET方法携带？来请求CGI执行,如 ?test.sh这种形式 */
+/* GET方法携带？来请求CGI执行,如 ?test.sh这种形式，带参数的GET */
  if (strcasecmp(method, "GET") == 0)
  {
   query_string = url;
@@ -217,12 +219,12 @@ void execute_cgi(int client, const char *path,
 
  buf[0] = 'A'; buf[1] = '\0';
  if (strcasecmp(method, "GET") == 0)
-  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
+  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard http headers */
    numchars = get_line(client, buf, sizeof(buf));
  else    /* POST */
  {
   numchars = get_line(client, buf, sizeof(buf));
-  /* parse content-length */
+  /* parse content-length and discard other fields in header*/
   while ((numchars > 0) && strcmp("\n", buf))
   {
    buf[15] = '\0';
@@ -258,15 +260,15 @@ void execute_cgi(int client, const char *path,
   char query_env[255];
   char length_env[255];
 
-  dup2(cgi_output[1], 1);
-  dup2(cgi_input[0], 0);
+  dup2(cgi_output[1], 1);  // close stdout of child and redirect it to parent
+  dup2(cgi_input[0], 0);   // close stdin of child and recieve scripts params from parent
   close(cgi_output[0]);
   close(cgi_input[1]);
-  // 增加环境变量REQUEST_METHOD=GET or POST
+  // add ENV_PARAM REQUEST_METHOD=GET or POST
   sprintf(meth_env, "REQUEST_METHOD=%s", method);
   putenv(meth_env);
 
-  /* 目前看起来好像query_string并没有执行 */
+  /* it seems query_string do not work */
   if (strcasecmp(method, "GET") == 0) {
    sprintf(query_env, "QUERY_STRING=%s", query_string);
    putenv(query_env);
@@ -276,16 +278,19 @@ void execute_cgi(int client, const char *path,
    sprintf(length_env, "CONTENT_LENGTH=%d", content_length);
    putenv(length_env);
   }
-  execl(path, path, NULL); // cgi脚本可以直接执行
+  execl(path, path, NULL); // run cgi scripts with ./xx.cgi
   exit(0);
  } else {    /* parent */
   close(cgi_output[1]);
   close(cgi_input[0]);
   if (strcasecmp(method, "POST") == 0)
    for (i = 0; i < content_length; i++) {
+	// read http content "color=xxx" and send to stdin of child process
     recv(client, &c, 1, 0);
     write(cgi_input[1], &c, 1);
    }
+
+  // get stdout of child process and send it to http client
   while (read(cgi_output[0], &c, 1) > 0)
    send(client, &c, 1, 0);
 
@@ -314,6 +319,7 @@ int get_line(int sock, char *buf, int size)
  char c = '\0';
  int n;
 
+ // 三种结束符：\n   \r   \r\n
  while ((i < size - 1) && (c != '\n'))
  {
   n = recv(sock, &c, 1, 0);
@@ -322,6 +328,7 @@ int get_line(int sock, char *buf, int size)
   {
    if (c == '\r')
    {
+	// 试探下一个字符是不是\n，加上此标志可以读出数据而不把数据从tcp buffer中删除
     n = recv(sock, &c, 1, MSG_PEEK);
     /* DEBUG printf("%02X\n", c); */
     if ((n > 0) && (c == '\n'))
@@ -435,7 +442,7 @@ int startup(u_short *port)
  memset(&name, 0, sizeof(name));
  name.sin_family = AF_INET;
  name.sin_port = htons(*port);
- name.sin_addr.s_addr = htonl(INADDR_ANY);
+ name.sin_addr.s_addr = htonl(INADDR_ANY);  // bind any interface of host
  if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0)
   error_die("bind");
  if (*port == 0)  /* if dynamically allocating a port */
